@@ -15,12 +15,22 @@ def mongo_db():
     client.drop_database(client.test_db)
 
 
-def test_write_read(mongo_db):
+@pytest.fixture(scope="module")
+def local_fs_path():
+    with tempfile.TemporaryDirectory() as path:
+        yield path
 
-    with tempfile.TemporaryDirectory() as root_path:
 
-        db = FileDB(mongo_db=mongo_db)
-        fs = LocalFS(db, root_path)
+@pytest.fixture(scope="module")
+def cache_path():
+    with tempfile.TemporaryDirectory() as path:
+        yield path
 
-        fs.file({"a": "1"}).write_text("hi!")
-        assert fs.file({"a": "1"}).read_text() == "hi!"
+
+def test_write_read(mongo_db, local_fs_path, cache_path):
+
+    db = FileDB(mongo_db=mongo_db, local_cache_path=cache_path, local_cache_size=None)
+    fs = LocalFS(db, name="local", path=local_fs_path)
+
+    fs.file({"a": "1"}).write_text("hi!")
+    assert fs.file({"a": "1"}).read_text() == "hi!"

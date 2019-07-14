@@ -3,16 +3,20 @@ from abc import abstractmethod
 from contextlib import contextmanager
 import json
 import logging
+import os
 from typing import Any
 from typing import Dict
 from typing import IO
 from typing import List
+from typing import Optional
 from typing import Union
 import uuid
 
 from pymongo.collection import Collection
 from pymongo.database import Database as MongoDatabase
 from pymongo.errors import DuplicateKeyError
+
+from filedb.local_cache import LocalCache
 
 Query = Dict[str, Any]
 Key = Dict[str, str]
@@ -21,9 +25,15 @@ logger = logging.getLogger(__name__)
 
 
 class FileDB:
-    def __init__(self, mongo_db: MongoDatabase):
+    def __init__(
+        self,
+        mongo_db: MongoDatabase,
+        local_cache_path: os.PathLike,
+        local_cache_size: Optional[float],
+    ):
 
         self.mongo_db = mongo_db
+        self.local_cache = LocalCache(root_path=local_cache_path, size=local_cache_size)
         self.ids_collection: Collection = mongo_db.ids
 
     def key_id(self, key: Key):
@@ -215,15 +225,11 @@ class File:
 
     def read_text(self, buffering=-1, encoding=None, errors=None, newline=None) -> str:
         with self.open(
-            "r", buffering=buffering, encoding=encoding, errors=errors, newline=newline
-        ) as f:
-            return f.read()
-
-    def read_bytes(
-        self, buffering=-1, encoding=None, errors=None, newline=None
-    ) -> bytes:
-        with self.open(
-            "rb", buffering=buffering, encoding=encoding, errors=errors, newline=newline
+            mode="r",
+            buffering=buffering,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
         ) as f:
             return f.read()
 
@@ -231,14 +237,18 @@ class File:
         self, data: str, buffering=-1, encoding=None, errors=None, newline=None
     ):
         with self.open(
-            "w", buffering=buffering, encoding=encoding, errors=errors, newline=newline
+            mode="w",
+            buffering=buffering,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
         ) as f:
             f.write(data)
 
-    def write_bytes(
-        self, data: bytes, buffering=-1, encoding=None, errors=None, newline=None
-    ):
-        with self.open(
-            "wb", buffering=buffering, encoding=encoding, errors=errors, newline=newline
-        ) as f:
+    def read_bytes(self, buffering=-1) -> bytes:
+        with self.open(mode="rb", buffering=buffering) as f:
+            return f.read()
+
+    def write_bytes(self, data: bytes, buffering=-1):
+        with self.open(mode="wb", buffering=buffering) as f:
             f.write(data)

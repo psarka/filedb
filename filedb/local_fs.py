@@ -6,14 +6,14 @@ from filedb.db import FileDB
 
 
 class LocalFS(FileSystem):
-    def __init__(self, file_db: FileDB, path: os.PathLike, name: str = "local"):
+    def __init__(self, file_db: FileDB, name: str, path: os.PathLike):
 
         self.name = name
         self.path = Path(path).resolve()
         super().__init__(file_db=file_db)
 
     def collection_name(self):
-        return f"{self.name}:{self.path}"
+        return f"local:{self.name}/{self.path}"
 
     def delete(self, _id, _local_id):
         try:
