@@ -6,6 +6,7 @@ import zlib
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
+
 from filedb import psutil
 
 
@@ -42,8 +43,9 @@ class Cache:
             pid = lock_info['pid']
             if psutil.pid_exists(pid) and pid_create_time(pid) == lock_info['pid_create_time']:
                 lock_path.unlink()
-                raise FileLockedException(f'Cache file {cache_path} is write-locked by a process {pid}! If you think'
-                                          f'that the lock is stale, delete the lock file {existing_lock} manually.')
+                raise FileLockedException(f'Cache file {cache_path} is write-locked by a process '
+                                          f'{pid}! If you think that the lock is stale, delete the '
+                                          f'lock file {existing_lock} manually.')
 
         yield
 
@@ -70,8 +72,9 @@ class Cache:
             pid = lock_info['pid']
             if psutil.pid_exists(pid) and pid_create_time(pid) == lock_info['pid_create_time']:
                 lock_path.unlink()
-                raise FileLockedException(f'Cache file {cache_path} is locked by a process {pid}! If you think'
-                                          f'that the lock is stale, delete the lock file {existing_lock} manually.')
+                raise FileLockedException(f'Cache file {cache_path} is locked by a process {pid}! '
+                                          f'If you think that the lock is stale, delete the lock '
+                                          f'file {existing_lock} manually.')
 
         yield
 

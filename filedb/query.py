@@ -1,29 +1,10 @@
-import datetime
 from enum import Enum
 from typing import Any
 from typing import Dict
 from typing import List
-from typing import Pattern
 from typing import Union
 
-import bson
-
-
-Value = Union[None,
-              bool,
-              int,
-              str,
-              bytes,
-              datetime.datetime,
-              Pattern,
-              List['Value'],
-              Dict[str, 'Value'],
-              bson.int64.Int64,
-              bson.regex.Regex,
-              bson.binary.Binary,
-              bson.objectid.ObjectId,
-              bson.dbref.DBRef,
-              bson.code.Code]
+from filedb.key import Value
 
 
 class Operator:
@@ -143,7 +124,7 @@ less_or_equal = SingleComparisonOperator('$lte')
 is_in = MultipleComparisonOperator('$in')
 not_in = MultipleComparisonOperator('$nin')
 exists = Exists(True)
-does_not_exist = Exists(False)
+not_exists = Exists(False)
 has_type = TypeComparisonOperator()
 
 RawMongoQuery = Dict[str, Any]
