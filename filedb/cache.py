@@ -2,12 +2,12 @@ import itertools
 import json
 import os
 import time
-import zlib
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
 from filedb import psutil
+from filedb.hash import crc32
 
 
 class FileLockedException(Exception):
@@ -80,9 +80,7 @@ class Cache:
 
         lock_path.unlink()
 
+    # TODO cache this to disk
     def crc32(self, cache_path):
         with self.read_lock(cache_path):
-            prev = 0
-            for line in open(cache_path, 'rb'):
-                prev = zlib.crc32(line, prev)
-            return "%X" % (prev & 0xFFFFFFFF)
+            return crc32(cache_path)

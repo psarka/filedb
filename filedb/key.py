@@ -8,7 +8,7 @@ import bson
 
 ID = '_id'
 STORAGE_PATH = '_storage_path_e5c8b4a5-96b1-4ed3-9a36-d8bb28204240'
-KEY_STRING = 'key_string'
+KEY_BYTES = 'key_bytes'
 
 Value = Union[None,
               bool,
@@ -29,12 +29,31 @@ Value = Union[None,
 Key = Dict[str, Value]
 
 
-def to_string(key: Key):
-    return bson.BSON.encode(sort_key(key))
+def key_bytes(key: Key):
+    return bson.BSON.encode(key_sorted(key))
 
 
-def sort_key(key: Key):
+def key_sorted(key: Key):
     if isinstance(key, dict):
-        return dict(sorted((k, sort_key(v)) for k, v in key.items()))
+        return dict(sorted((k, key_sorted(v)) for k, v in key.items()))
     else:
         return key
+
+
+def key_hash(key: Key):
+    return hash(_immutable(key))
+
+
+def _immutable(nested):
+
+    # separate strings from other iterables
+    if isinstance(nested, str):
+        return nested
+
+    try:
+        return tuple(sorted((k, _immutable(v)) for k, v in nested.items()))
+    except (AttributeError, TypeError):
+        try:
+            return tuple(_immutable(x) for x in nested)
+        except TypeError:
+            return nested
