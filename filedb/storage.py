@@ -8,9 +8,10 @@ from typing import Union
 
 import boto3
 from google.cloud import storage
+from google.cloud.storage import Bucket
 
 from filedb.cache import Cache
-from filedb.hash import crc32
+from filedb.hash import crc32c
 
 
 class Storage(ABC):
@@ -73,14 +74,19 @@ class SyncStorage(Storage):
 class GoogleCloudStorage(SyncStorage):
 
     def __init__(self,
-                 bucket_name: str,
+                 bucket: Union[str, Bucket],
                  cache: Cache,
                  prefix: str = '',
                  delimiter: str = '/'):
         self.prefix = prefix
         self.delimiter = delimiter
-        self.bucket = storage.Client().get_bucket(bucket_name)
-        self.gs_uri = f'gs://{bucket_name}{delimiter}{prefix}{delimiter}'
+
+        if isinstance(bucket, str):
+            self.bucket = storage.Client().get_bucket(bucket)
+        else:
+            self.bucket = bucket
+
+        self.gs_uri = f'gs://{bucket.name}{delimiter}{prefix}{delimiter}'
 
         super().__init__(name=self.gs_uri,
                          cache=cache)
@@ -102,7 +108,7 @@ class GoogleCloudStorage(SyncStorage):
     def upload(self, cache_path, storage_path, file_hash):
         blob = self.bucket.blob(self._bucket_path(storage_path))
         blob.crc32c = file_hash
-        blob.upload_from_file(cache_path)
+        blob.upload_from_filename(str(cache_path))
 
     def crc32(self, storage_path):
         return self.bucket.blob(self._bucket_path(storage_path)).crc32c
@@ -217,4 +223,4 @@ class LocalStorage(DirectTransportStorage):
 
     # TODO cache crc32 value on disk
     def crc32(self, storage_path):
-        return crc32(self._file_path(storage_path))
+        return crc32c(self._file_path(storage_path))

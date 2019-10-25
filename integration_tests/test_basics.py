@@ -5,11 +5,13 @@ from pathlib import Path
 import boto3
 import pytest
 import toml
+from google.cloud import storage
 from pymongo import MongoClient
 
 from filedb.cache import Cache
 from filedb.db import FileDB
 from filedb.index import Index
+from filedb.storage import GoogleCloudStorage
 from filedb.storage import LocalStorage
 from filedb.storage import S3
 
@@ -42,6 +44,18 @@ def temp_s3_bucket():
 
 
 @contextmanager
+def temp_gcs_bucket():
+    secret_json = env['google_cloud_storage']['GOOGLE_APPLICATION_CREDENTIALS']
+    gsc_client = storage.Client.from_service_account_json(secret_json)
+    bucket = gsc_client.bucket('d5494cbb-6484-4300-8483-82d7d7f550a7')
+    bucket.create(location='europe-west1')
+    try:
+        yield bucket
+    finally:
+        bucket.delete()
+
+
+@contextmanager
 def local():
     with temp_mongo_db() as mongo_db:
         with tempfile.TemporaryDirectory() as local_storage_path:
@@ -59,7 +73,17 @@ def s3():
                                         cache=Cache(cache_path)))
 
 
-@pytest.mark.parametrize("db_factory", [local, s3])
+@contextmanager
+def gcs():
+    with temp_mongo_db() as mongo_db:
+        with temp_gcs_bucket() as bucket:
+            with tempfile.TemporaryDirectory() as cache_path:
+                yield FileDB(index=Index(mongo_db=mongo_db),
+                             storage=GoogleCloudStorage(bucket,
+                                                        cache=Cache(cache_path)))
+
+
+@pytest.mark.parametrize("db_factory", [local, s3, gcs])
 def test_write_read(db_factory):
     with db_factory() as db:
         db.file({'a': '1'}).write_text('hi!')

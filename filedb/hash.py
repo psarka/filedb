@@ -1,14 +1,8 @@
+import base64
 import hashlib
-import zlib
 from pathlib import Path
 
-
-# TODO chunking as in md5 is better
-def crc32(path: Path):
-    prev = 0
-    for line in path.open('rb'):
-        prev = zlib.crc32(line, prev)
-    return "%X" % (prev & 0xFFFFFFFF)
+import crcmod
 
 
 def md5(path: Path):
@@ -17,3 +11,12 @@ def md5(path: Path):
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
+
+def crc32c(path: Path):
+    hash_crc32c = crcmod.predefined.Crc('crc-32c')
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_crc32c.update(chunk)
+
+    return base64.encodebytes(hash_crc32c.digest()).rstrip(b'\n').decode('utf-8')

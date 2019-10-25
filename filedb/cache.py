@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from filedb import psutil
-from filedb.hash import crc32
+from filedb.hash import crc32c
 
 
 class FileLockedException(Exception):
@@ -92,4 +92,4 @@ class Cache:
     # TODO cache this to disk
     def crc32(self, cache_path):
         with self.read_lock(cache_path):
-            return crc32(cache_path)
+            return crc32c(cache_path)
