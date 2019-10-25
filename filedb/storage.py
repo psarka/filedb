@@ -3,6 +3,8 @@ from abc import ABC
 from abc import abstractmethod
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
+from typing import Union
 
 import boto3
 from google.cloud import storage
@@ -106,19 +108,26 @@ class GoogleCloudStorage(SyncStorage):
         return self.bucket.blob(self._bucket_path(storage_path)).crc32c
 
 
+S3Bucket = Any  # boto3 classes are created during runtime!
+
+
 class S3(SyncStorage):
 
     def __init__(self,
-                 bucket_name: str,
+                 bucket: Union[str, S3Bucket],
                  cache: Cache,
                  prefix: str = '',
                  delimiter: str = '/'):
-        self.bucket_name = bucket_name
         self.prefix = prefix
         self.delimiter = delimiter
-        self.s3_resource = boto3.resource('s3')
-        self.bucket = self.s3_resource.Bucket(bucket_name)
-        self.s3_uri = f's3://{bucket_name}{delimiter}{prefix}{delimiter}'
+        self.bucket = bucket
+
+        if isinstance(bucket, str):
+            self.bucket = boto3.resource('s3').Bucket(bucket)
+        else:
+            self.bucket = bucket
+
+        self.s3_uri = f's3://{self.bucket.name}{delimiter}{prefix}{delimiter}'
 
         super().__init__(name=self.s3_uri, cache=cache)
 
@@ -127,30 +136,24 @@ class S3(SyncStorage):
         # TODO maybe split into "folders"
 
     def copy(self, storage_path_1, storage_path_2):
-        self.s3_resource.meta.client.copy(CopySource={'Bucket': self.bucket,
-                                                      'Key': self._bucket_path(storage_path_1)},
-                                          Bucket=self.bucket_name,
-                                          Key=self._bucket_path(storage_path_2))
+        self.bucket.copy(CopySource={'Bucket': self.bucket.name,
+                                     'Key': self._bucket_path(storage_path_1)},
+                         Key=self._bucket_path(storage_path_2))
 
     def delete(self, storage_path):
-        self.s3_resource.meta.client.delete_object(Bucket=self.bucket_name,
-                                                   Key=self._bucket_path(storage_path))
+        self.bucket.Object(key=self._bucket_path(storage_path)).delete()
 
     def download(self, storage_path, cache_path):
-        self.s3_resource.meta.client.download_file(Bucket=self.bucket_name,
-                                                   Key=self._bucket_path(storage_path),
-                                                   Filename=cache_path)
+        self.bucket.download_file(Key=self._bucket_path(storage_path),
+                                  Filename=str(cache_path))
 
     def upload(self, cache_path, storage_path, file_hash):
-        self.s3_resource.meta.client.upload_file(Filename=cache_path,
-                                                 Bucket=self.bucket_name,
-                                                 Key=self._bucket_path(storage_path),
-                                                 ExtraArgs={"Metadata": {"crc32": file_hash}})
+        self.bucket.upload_file(Filename=str(cache_path),
+                                Key=self._bucket_path(storage_path),
+                                ExtraArgs={"Metadata": {"crc32": file_hash}})
 
     def crc32(self, storage_path):
-        meta = self.s3_resource.meta.client.head_object(Bucket=self.bucket_name,
-                                                        Key=self._bucket_path(storage_path))
-        return meta['crc32']
+        return self.bucket.Object(key=self._bucket_path(storage_path)).metadata['crc32']
         # TODO this may fail, maybe raise a more informative error
 
 

@@ -19,7 +19,7 @@ class Index:
     # TODO late connection for multiprocessing
 
     def __init__(self, mongo_db: Database):
-        self.name = None
+        self.name = f'mongo://{mongo_db.client.HOST}{mongo_db.client.PORT}'
         self.mongo_db = mongo_db
         self.key_id_collection = mongo_db['key_id']
         self.key_id_collection.create_index(KEY_BYTES)

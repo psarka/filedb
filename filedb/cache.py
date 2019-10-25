@@ -18,8 +18,8 @@ class Cache:
 
     def __init__(self,
                  root_path: Path,
-                 size: Optional[float]):
-        self.root_path = root_path
+                 size: Optional[float] = None):
+        self.root_path = Path(root_path)
         self.size = size
 
     def path(self, storage_path, storage_name, index_name):
@@ -29,56 +29,65 @@ class Cache:
 
     @contextmanager
     def read_lock(self, cache_path: Path):
-        pid = os.getpid()
-        pid_create_time = psutil.pid_create_time(pid)
+        my_pid = os.getpid()
+        my_create_time = psutil.pid_create_time(my_pid)
         directory = cache_path.parent
-        lock_path = directory / f'read_lock_{pid}_{pid_create_time}_{time.time()}'
+        lock_path = directory / f'read_lock_{my_pid}_{my_create_time}_{time.time()}'
 
         directory.mkdir(parents=True, exist_ok=True)
-        lock_path.write_text(json.dumps({'pid': pid,
-                                         'pid_create_time': pid_create_time}))
+        lock_path.write_text(json.dumps({'pid': my_pid,
+                                         'pid_create_time': my_create_time}))
 
         for existing_lock in directory.glob('write_lock*'):
             lock_info = json.loads(existing_lock.read_text())
-            pid = lock_info['pid']
-            if psutil.pid_exists(pid) and pid_create_time(pid) == lock_info['pid_create_time']:
+            lock_pid = lock_info['pid']
+            lock_create_time = lock_info['pid_create_time']
+
+            if my_pid == lock_pid and my_create_time == lock_create_time:
+                continue  # my own lock
+
+            if psutil.pid_exists(lock_pid) and psutil.pid_create_time(lock_pid) == lock_create_time:
                 lock_path.unlink()
                 raise FileLockedException(f'Cache file {cache_path} is write-locked by a process '
-                                          f'{pid}! If you think that the lock is stale, delete the '
-                                          f'lock file {existing_lock} manually.')
+                                          f'{lock_pid}! If you think that the lock is stale, '
+                                          f'delete the lock file {existing_lock} manually.')
 
-        yield
-
-        lock_path.unlink()
+        try:
+            yield
+        finally:
+            lock_path.unlink()
 
     @contextmanager
     def write_lock(self, cache_path):
-        pid = os.getpid()
-        pid_create_time = psutil.pid_create_time(pid)
+        my_pid = os.getpid()
+        my_create_time = psutil.pid_create_time(my_pid)
         directory = cache_path.parent
-        lock_path = directory / f'write_lock_{pid}_{pid_create_time}_{time.time()}'
+        lock_path = directory / f'write_lock_{my_pid}_{my_create_time}_{time.time()}'
 
         directory.mkdir(parents=True, exist_ok=True)
-        lock_path.write_text(json.dumps({'pid': pid,
-                                         'pid_create_time': pid_create_time}))
+        lock_path.write_text(json.dumps({'pid': my_pid,
+                                         'pid_create_time': my_create_time}))
 
         for existing_lock in itertools.chain(directory.glob('write_lock*'),
                                              directory.glob('read_lock*')):
 
-            if existing_lock == lock_path:
-                continue
-
             lock_info = json.loads(existing_lock.read_text())
-            pid = lock_info['pid']
-            if psutil.pid_exists(pid) and pid_create_time(pid) == lock_info['pid_create_time']:
+            lock_pid = lock_info['pid']
+            lock_create_time = lock_info['pid_create_time']
+
+            if my_pid == lock_pid and my_create_time == lock_create_time:
+                continue  # my own lock
+
+            if psutil.pid_exists(lock_pid) and psutil.pid_create_time(lock_pid) == lock_create_time:
                 lock_path.unlink()
-                raise FileLockedException(f'Cache file {cache_path} is locked by a process {pid}! '
-                                          f'If you think that the lock is stale, delete the lock '
-                                          f'file {existing_lock} manually.')
+                raise FileLockedException(f'Cache file {cache_path} is locked by a process '
+                                          f'{lock_pid}! If you think that the lock is stale, '
+                                          f'delete the lock file {existing_lock} manually.')
 
-        yield
-
-        lock_path.unlink()
+        try:
+            yield
+        finally:
+            lock_path.unlink()
 
     # TODO cache this to disk
     def crc32(self, cache_path):

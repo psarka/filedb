@@ -218,6 +218,7 @@ class File:
             cache_path = self.storage.cache.path(storage_path,
                                                  index_name=self.index.name,
                                                  storage_name=self.storage.name)
+
             with self.storage.cache.read_lock(cache_path):
                 with self.storage.cache.write_lock(cache_path):
                     with cache_path.open(mode,
