@@ -34,3 +34,6 @@ MANIFEST
 
 # Environments
 venv/
+
+# env config
+integration_tests/env.toml

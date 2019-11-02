@@ -1,3 +1,7 @@
+from typing import Any
+
+from dataclasses import dataclass
+from dataclasses import asdict
 import logging
 import uuid
 from contextlib import contextmanager
@@ -5,6 +9,8 @@ from typing import IO
 from typing import List
 from typing import Union
 
+from filedb import cache
+from filedb import lock
 from filedb.index import Index
 from filedb.key import Key
 from filedb.key import key_hash
@@ -13,6 +19,15 @@ from filedb.storage import DirectTransportStorage
 from filedb.storage import SyncStorage
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _HandleParams:
+    mode: str
+    buffering: Any = -1
+    encoding: Any = None
+    errors: Any = None
+    newline: Any = None
 
 
 class FileDB:
@@ -84,21 +99,19 @@ class File:
              errors=None,
              newline=None) -> IO:
 
+        handle_params = _HandleParams(mode=mode,
+                                      buffering=buffering,
+                                      encoding=encoding,
+                                      errors=errors,
+                                      newline=newline)
+
         if mode[0] == "r":
 
-            with self._read_handle(mode,
-                                   buffering=buffering,
-                                   encoding=encoding,
-                                   errors=errors,
-                                   newline=newline) as file_object:
+            with self._read_handle(handle_params) as file_object:
                 yield file_object
 
         else:
-            with self._write_handle(mode,
-                                    buffering=buffering,
-                                    encoding=encoding,
-                                    errors=errors,
-                                    newline=newline) as file_object:
+            with self._write_handle(handle_params) as file_object:
                 yield file_object
 
     def copy(self, to: Union[Key, 'File']):
@@ -159,75 +172,76 @@ class File:
         return f'File({self.key})@{self.storage.name}'
 
     @contextmanager
-    def _read_handle(self,
-                     mode: str,
-                     buffering=-1,
-                     encoding=None,
-                     errors=None,
-                     newline=None):
+    def _read_handle(self, handle_params: _HandleParams):
 
         storage_path = self.index.storage_path(self.key, self.storage.name)
         if storage_path is None:
             raise FileNotFoundError(f"File({self.key}) does not exist!")
 
         if isinstance(self.storage, DirectTransportStorage):
-            with self.storage.read_handle(storage_path,
-                                          mode=mode,
-                                          buffering=buffering,
-                                          encoding=encoding,
-                                          errors=errors,
-                                          newline=newline) as f:
+            with self.storage.read_handle(storage_path, **asdict(handle_params)) as f:
                 yield f
-        else:  # SyncStorage
-            cache_path = self.storage.cache.path(storage_path,
+        else:
+            with self._syncd_read_handle(storage_path=storage_path,
+                                         handle_params=handle_params) as f:
+                yield f
+
+    @contextmanager
+    def _syncd_read_handle(self, storage_path, handle_params):
+
+        try:
+            with self.storage.cache.reading_path(storage_path=storage_path,
                                                  index_name=self.index.name,
-                                                 storage_name=self.storage.name)
+                                                 storage_name=self.storage.name,
+                                                 timeout=None) as path:
 
-            with self.storage.cache.read_lock(cache_path):
-                if (not cache_path.exists() or
-                        self.storage.cache.crc32(cache_path) != self.storage.crc32(storage_path)):
-                    with self.storage.cache.write_lock(cache_path):
-                        self.storage.download(storage_path, cache_path)
+                with path.open(**asdict(handle_params)) as f:
+                    yield f
 
-                with cache_path.open(mode,
-                                     buffering=buffering,
-                                     encoding=encoding,
-                                     errors=errors,
-                                     newline=newline) as f:
+        except cache.FileNotCachedError:
+
+            try:
+                with self.storage.cache.writing_path(storage_path=storage_path,
+                                                     index_name=self.index.name,
+                                                     storage_name=self.storage.name,
+                                                     timeout=0) as path:
+
+                    self.storage.download(storage_path, path)
+
+            except lock.FileLocked:
+                with self._syncd_read_handle(storage_path, handle_params) as f:
+                    yield f
+
+            else:
+                with self._syncd_read_handle(storage_path, handle_params) as f:
                     yield f
 
     @contextmanager
-    def _write_handle(self,
-                      mode: str,
-                      buffering=-1,
-                      encoding=None,
-                      errors=None,
-                      newline=None):
+    def _write_handle(self, handle_params):
 
         storage_path = str(uuid.uuid4())
 
         if isinstance(self.storage, DirectTransportStorage):
-            with self.storage.write_handle(storage_path,
-                                           mode=mode,
-                                           buffering=buffering,
-                                           encoding=encoding,
-                                           errors=errors,
-                                           newline=newline) as f:
+            with self.storage.write_handle(storage_path, **asdict(handle_params)) as f:
                 yield f
         else:
-            cache_path = self.storage.cache.path(storage_path,
-                                                 index_name=self.index.name,
-                                                 storage_name=self.storage.name)
+            with self._syncd_write_handle(storage_path, handle_params) as f:
+                yield f
 
-            with self.storage.cache.read_lock(cache_path):
-                with self.storage.cache.write_lock(cache_path):
-                    with cache_path.open(mode,
-                                         buffering=buffering,
-                                         encoding=encoding,
-                                         errors=errors,
-                                         newline=newline) as f:
-                        yield f
+        self.index.upsert(self.key, storage_path, self.storage.name)
 
-                self.storage.upload(cache_path, storage_path, self.storage.cache.crc32(cache_path))
+    @contextmanager
+    def _syncd_write_handle(self, storage_path, handle_params):
 
+        with self.storage.cache.writing_path(storage_path,
+                                             index_name=self.index.name,
+                                             storage_name=self.storage.name,
+                                             timeout=None) as path:
+            with path.open(**asdict(handle_params)) as f:
+                yield f
+
+        crc32c = self.storage.cache.crc32c(storage_path=storage_path,
+                                           storage_name=self.storage.name,
+                                           index_name=self.index.name)
+        self.storage.upload(path, storage_path, crc32c)
         self.index.upsert(self.key, storage_path, self.storage.name)

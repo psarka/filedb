@@ -28,7 +28,7 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def crc32(self, storage_path):
+    def crc32c(self, storage_path):
         pass
 
 
@@ -110,7 +110,7 @@ class GoogleCloudStorage(SyncStorage):
         blob.crc32c = file_hash
         blob.upload_from_filename(str(cache_path))
 
-    def crc32(self, storage_path):
+    def crc32c(self, storage_path):
         return self.bucket.blob(self._bucket_path(storage_path)).crc32c
 
 
@@ -156,10 +156,10 @@ class S3(SyncStorage):
     def upload(self, cache_path, storage_path, file_hash):
         self.bucket.upload_file(Filename=str(cache_path),
                                 Key=self._bucket_path(storage_path),
-                                ExtraArgs={"Metadata": {"crc32": file_hash}})
+                                ExtraArgs={"Metadata": {"crc32c": file_hash}})
 
-    def crc32(self, storage_path):
-        return self.bucket.Object(key=self._bucket_path(storage_path)).metadata['crc32']
+    def crc32c(self, storage_path):
+        return self.bucket.Object(key=self._bucket_path(storage_path)).metadata['crc32c']
         # TODO this may fail, maybe raise a more informative error
 
 
@@ -192,6 +192,7 @@ class LocalStorage(DirectTransportStorage):
                                                 newline=newline) as f:
             yield f
 
+    # TODO writing should be atomic, if possible
     # TODO raise and catch outside for more informative error
     @contextmanager
     def write_handle(self,
@@ -221,6 +222,6 @@ class LocalStorage(DirectTransportStorage):
     def delete(self, storage_path):
         self._file_path(storage_path).unlink()
 
-    # TODO cache crc32 value on disk
-    def crc32(self, storage_path):
+    # TODO cache crc32c value on disk
+    def crc32c(self, storage_path):
         return crc32c(self._file_path(storage_path))
