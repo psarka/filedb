@@ -4,6 +4,7 @@ from abc import abstractmethod
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from typing import Callable
 from typing import Union
 
 import boto3
@@ -12,6 +13,7 @@ from google.cloud.storage import Bucket
 
 from filedb.cache import Cache
 from filedb.hash import crc32c
+from filedb.multiprocessing import MultiprocessingMixin
 
 
 class Storage(ABC):
@@ -75,9 +77,9 @@ class GoogleCloudStorage(SyncStorage):
 
     def __init__(self,
                  bucket: Union[str, Bucket],
-                 cache: Cache,
                  prefix: str = '',
-                 delimiter: str = '/'):
+                 delimiter: str = '/',
+                 cache: Cache = Cache()):
         self.prefix = prefix
         self.delimiter = delimiter
 
@@ -114,16 +116,60 @@ class GoogleCloudStorage(SyncStorage):
         return self.bucket.blob(self._bucket_path(storage_path)).crc32c
 
 
-S3Bucket = Any  # boto3 classes are created during runtime!
+class MPGoogleCloudStorage(GoogleCloudStorage, MultiprocessingMixin):
+
+    def __init__(self,
+                 bucket_factory: Callable[[], Bucket],
+                 prefix: str = '',
+                 delimiter: str = '/',
+                 cache: Cache = Cache()):
+        self.bucket_factory = bucket_factory
+        with self.stay_connected():
+            super().__init__(bucket=self.bucket,
+                             cache=cache,
+                             prefix=prefix,
+                             delimiter=delimiter)
+
+    def _setup_connection(self):
+        self.bucket = self.bucket_factory()
+
+    def _teardown_connection(self):
+        self.bucket = None
+
+    def copy(self, storage_path_1, storage_path_2):
+        with self.stay_connected():
+            super().copy(storage_path_1, storage_path_2)
+
+    def delete(self, storage_path):
+        with self.stay_connected():
+            super().delete(storage_path)
+
+    def download(self, storage_path, cache_path):
+        with self.stay_connected():
+            super().download(storage_path, cache_path)
+
+    def upload(self, cache_path, storage_path, file_hash):
+        with self.stay_connected():
+            super().upload(cache_path, storage_path, file_hash)
+
+    def crc32c(self, storage_path):
+        with self.stay_connected():
+            return super().crc32c(storage_path)
 
 
+# boto3 classes are created during runtime, so we can't use them for type annotations
+# Thus, this annotation is for humans only
+S3Bucket = Any
+
+
+# TODO store keys also
 class S3(SyncStorage):
 
     def __init__(self,
                  bucket: Union[str, S3Bucket],
-                 cache: Cache,
                  prefix: str = '',
-                 delimiter: str = '/'):
+                 delimiter: str = '/',
+                 cache: Cache = Cache()):
         self.prefix = prefix
         self.delimiter = delimiter
         self.bucket = bucket
@@ -161,6 +207,47 @@ class S3(SyncStorage):
     def crc32c(self, storage_path):
         return self.bucket.Object(key=self._bucket_path(storage_path)).metadata['crc32c']
         # TODO this may fail, maybe raise a more informative error
+
+
+class MPS3(S3, MultiprocessingMixin):
+
+    def __init__(self,
+                 bucket_factory: Callable[[], S3Bucket],
+                 prefix: str = '',
+                 delimiter: str = '/',
+                 cache: Cache = Cache()):
+        self.bucket_factory = bucket_factory
+        with self.stay_connected():
+            super().__init__(bucket=self.bucket,
+                             prefix=prefix,
+                             delimiter=delimiter,
+                             cache=cache)
+
+    def _setup_connection(self):
+        self.bucket = self.bucket_factory()
+
+    def _teardown_connection(self):
+        self.bucket = None
+
+    def copy(self, storage_path_1, storage_path_2):
+        with self.stay_connected():
+            super().copy(storage_path_1, storage_path_2)
+
+    def delete(self, storage_path):
+        with self.stay_connected():
+            super().delete(storage_path)
+
+    def download(self, storage_path, cache_path):
+        with self.stay_connected():
+            super().download(storage_path, cache_path)
+
+    def upload(self, cache_path, storage_path, file_hash):
+        with self.stay_connected():
+            super().upload(cache_path, storage_path, file_hash)
+
+    def crc32c(self, storage_path):
+        with self.stay_connected():
+            return super().crc32c(storage_path)
 
 
 class LocalStorage(DirectTransportStorage):

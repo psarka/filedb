@@ -1,14 +1,17 @@
+import uuid
+from typing import Callable
 from typing import List
 from typing import Optional
 
 from bson import ObjectId
 from pymongo.database import Database
 
+from filedb.key import ID
 from filedb.key import KEY_BYTES
 from filedb.key import Key
-from filedb.key import ID
 from filedb.key import STORAGE_PATH
 from filedb.key import key_bytes
+from filedb.multiprocessing import MultiprocessingMixin
 from filedb.query import Operator
 from filedb.query import Query
 
@@ -16,13 +19,21 @@ from filedb.query import Query
 class Index:
 
     # TODO register key and storage collections for robustness
-    # TODO late connection for multiprocessing
 
     def __init__(self, mongo_db: Database):
-        self.name = f'mongo://{mongo_db.client.HOST}{mongo_db.client.PORT}'
         self.mongo_db = mongo_db
-        self.key_id_collection = mongo_db['key_id']
+        self.key_id_collection = self.mongo_db['key_id']
+        self.settings_collection = self.mongo_db['settings']
         self.key_id_collection.create_index(KEY_BYTES)
+
+        settings = self.settings_collection.find_one({ID: ObjectId(b'__settings__')})
+        if settings and 'index_name' in settings:
+            self.name = settings['index_name']
+        else:
+            self.name = str(uuid.uuid4())
+            self.settings_collection.update_one(filter={ID: ObjectId(b'__settings__')},
+                                                update={'$set': {'index_name': self.name}},
+                                                upsert=True)
 
     def find(self, query: Query, storage_name: str) -> List[Key]:
         raw_query = {k: op.value if isinstance(op, Operator) else op
@@ -68,3 +79,45 @@ class Index:
             FileNotFoundError(f'File({key}) does not exist!')
 
         self.mongo_db[storage_name].delete_one({ID: key_id})
+
+
+class MPIndex(Index, MultiprocessingMixin):
+
+    def __init__(self, mongo_db_factory: Callable[[], Database]):
+        self.mongo_db_factory = mongo_db_factory
+        with self.stay_connected():
+            super().__init__(self.mongo_db)
+
+    def _setup_connection(self):
+        self.mongo_db = self.mongo_db_factory()
+        self.key_id_collection = self.mongo_db['key_id']
+        self.settings_collection = self.mongo_db['settings']
+
+    def _teardown_connection(self):
+        self.mongo_db.client.close()
+        self.mongo_db = None
+        self.key_id_collection = None
+        self.settings_collection = None
+
+    def find(self, query: Query, storage_name: str) -> List[Key]:
+        with self.stay_connected():
+            return super().find(query, storage_name)
+
+    def _key_id(self, key: Key) -> Optional[ObjectId]:
+        with self.stay_connected():
+            return super()._key_id(key)
+
+    def storage_path(self, key: Key, storage_name: str) -> Optional[str]:
+        with self.stay_connected():
+            return super().storage_path(key, storage_name)
+
+    def upsert(self,
+               key: Key,
+               storage_path: str,
+               storage_name: str):
+        with self.stay_connected():
+            return super().upsert(key, storage_path, storage_name)
+
+    def delete(self, key: Key, storage_name: str):
+        with self.stay_connected():
+            return super().delete(key, storage_name)
