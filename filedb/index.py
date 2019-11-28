@@ -12,7 +12,7 @@ from filedb.key import Key
 from filedb.key import STORAGE_PATH
 from filedb.key import key_bytes
 from filedb.multiprocessing import MultiprocessingMixin
-from filedb.query import Operator
+from filedb.query import expand
 from filedb.query import Query
 
 
@@ -36,9 +36,8 @@ class Index:
                                                 upsert=True)
 
     def find(self, query: Query, storage_name: str) -> List[Key]:
-        raw_query = {k: op.value if isinstance(op, Operator) else op
-                     for k, op in query.items()}
-
+        raw_query = expand(query)
+        print(raw_query)
         data_collection = self.mongo_db[storage_name]
         return data_collection.find(raw_query, {ID: False, STORAGE_PATH: False})
 
