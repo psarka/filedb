@@ -209,7 +209,6 @@ class _MultipleComparisonOperator(_Operator):
 
 
 class _Exists(_Operator):
-
     keyword = 'exists/not_exists'
 
     def __init__(self, yes_or_no: bool):
@@ -285,5 +284,8 @@ q = _Query()
 Operator = Union[_Operator, Value]
 Constraint = Union[_Constraint, Dict[str, Operator]]
 DSLMongoQuery = Constraint
-RawMongoQuery = Dict[str, Any]  # TODO more precise
+RawMongoQuery = Dict[str, Union[Value,
+                                List[Value],
+                                List['RawMongoQuery'],
+                                'RawMongoQuery']]  # not sure
 Query = Union[RawMongoQuery, Constraint]

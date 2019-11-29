@@ -31,3 +31,12 @@ def test_write_read(db_factory):
         db.file({'b': '3'}).delete()
         assert not db.file({'b': '3'}).exists()
         assert db.find({}) == []
+
+
+@pytest.mark.parametrize("db_factory", [local, s3, gcs])
+def test_overwrite(db_factory):
+    with db_factory() as db:
+        db.file({'a': '1'}).write_text('hi!')
+        assert db.file({'a': '1'}).read_text() == 'hi!'
+        db.file({'a': '1'}).write_text('ho!')
+        assert db.file({'a': '1'}).read_text() == 'ho!'

@@ -67,9 +67,11 @@ class Index:
         else:
             key_id = self.key_id_collection.find_one(query)[ID]
 
-        query = {**key, ID: key_id, STORAGE_PATH: storage_path}
         data_collection = self.mongo_db[storage_name]
-        data_collection.update_one(query, {"$set": query}, upsert=True)
+        data_collection.update_one({ID: key_id},
+                                   {"$set": {STORAGE_PATH: storage_path},
+                                    "$setOnInsert": {**key, ID: key_id}},
+                                   upsert=True)
 
     def delete(self, key: Key, storage_name: str):
         key_id = self._key_id(key)
