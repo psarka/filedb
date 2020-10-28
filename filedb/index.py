@@ -37,7 +37,6 @@ class Index:
 
     def find(self, query: Query, storage_name: str) -> List[Key]:
         raw_query = expand(query)
-        print(raw_query)
         data_collection = self.mongo_db[storage_name]
         return data_collection.find(raw_query, {ID: False, STORAGE_PATH: False})
 

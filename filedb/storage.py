@@ -7,7 +7,7 @@ from typing import Any
 from typing import Callable
 from typing import Union
 
-import boto3
+# TODO these should be optional if using S3
 from google.cloud import storage
 from google.cloud.storage import Bucket
 
@@ -88,7 +88,7 @@ class GoogleCloudStorage(SyncStorage):
         else:
             self.bucket = bucket
 
-        self.gs_uri = f'gs://{bucket.name}{delimiter}{prefix}{delimiter}'
+        self.gs_uri = f'gs://{self.bucket.name}{delimiter}{prefix}{delimiter}'
 
         super().__init__(name=self.gs_uri,
                          cache=cache)
@@ -175,6 +175,7 @@ class S3(SyncStorage):
         self.bucket = bucket
 
         if isinstance(bucket, str):
+            import boto3
             self.bucket = boto3.resource('s3').Bucket(bucket)
         else:
             self.bucket = bucket
