@@ -18,5 +18,5 @@ setup(name='pyfiledb',
                         'fasteners',
                         'pymongo',
                         'google-cloud-storage',
-                        'pstuil;sys_platform!="linux"'],
+                        'psutil;sys_platform!="linux"'],
       python_requires='>=3.6')
