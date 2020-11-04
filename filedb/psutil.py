@@ -1,7 +1,8 @@
 import errno
 import os
+import sys
 
-if os.name == 'nt':
+if sys.platform != 'linux':
     import psutil
 
     pid_exists = psutil.pid_exists
