@@ -2,7 +2,7 @@ from pathlib import Path
 from setuptools import setup
 
 setup(name='pyfiledb',
-      version='0.1',
+      version='0.3',
       author='Paulius Šarka',
       author_email='paulius.sarka@gmail.com',
       description='File database',
